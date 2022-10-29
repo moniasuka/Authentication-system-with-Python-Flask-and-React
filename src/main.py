@@ -9,9 +9,26 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, People, Favorite_People, Planets, Favorite_Planets, Vehicles, Favorite_Vehicles
+#flask librerias jwt
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity , get_jwt
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+#bcrypt
+from flask_bcrypt import Bcrypt
+
+
+
+
 #from models import Person
 
 app = Flask(__name__)
+
+#colocar debajo de la instancia de flask lo siguiente:
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")  # Change this!
+jwt = JWTManager(app)#configurando JWT
+bcrypt = Bcrypt(app)#configurando Bcrypt
+
 app.url_map.strict_slashes = False
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DB_CONNECTION_STRING')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -58,7 +75,10 @@ def create_new_user():
     else:
         descripcion=body['description']
 
-    new_user = User(email=body['email'], password=body['password'], is_active=True, description=descripcion)
+    #encriptando pw
+    pw_hash = bcrypt.generate_password_hash(body['password'], 10).decode("utf-8")
+
+    new_user = User(email=body['email'], password=pw_hash, is_active=True, description=descripcion)
     users = User.query.all()
     users = list(map( lambda user: user.serialize(), users))
 
@@ -72,6 +92,29 @@ def create_new_user():
     db.session.commit()
     
     return jsonify({"mensaje": "Usuario creado exitosamente"}), 201
+
+@app.route('/login', methods=['POST'])
+def user_login():
+    body = request.get_json()
+    email = body['email']
+    pw = body['password']       #campo tabla usuario
+    user = User.query.filter_by(email=email).first()#entontrar la primera coincidencia
+    if user is None:
+        raise APIException("Inválido, intenta de nuevo", status_code=400) #documentar errores con codigo (recomendacion)
+    if not bcrypt.check_password_hash(user.password, pw): #comparando passwords, si no coinciden levantamos el API exception 
+        raise APIException("Inválido, intenta de nuevo" , status_code=400)
+    token = create_access_token(identity = user.id) #crear token para autenticación
+    return jsonify({"token": token})
+
+@app.route('/profile', methods=['POST'])
+@jwt_required() #añadiendo
+def user_profile():
+    identidad = get_jwt_identity() #almacenando el ID del usuario 
+    user = User.query.get(identidad) 
+    return jsonify({"Usuario" : user.email})
+
+
+
 
 @app.route('/user/<int:user_id>', methods=['GET'])
 def get_user_by_id(user_id):

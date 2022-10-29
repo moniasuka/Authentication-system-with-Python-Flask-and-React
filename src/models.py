@@ -25,6 +25,10 @@ class User(db.Model):
             "descripcion": self.description
         }
 
+#Tokens bloqueados
+
+
+
 
 # Tabla Characters
 class People(db.Model):
