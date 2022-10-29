@@ -8,7 +8,8 @@ from flask_swagger import swagger
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
-from models import db, User, People, Favorite_People, Planets, Favorite_Planets, Vehicles, Favorite_Vehicles
+from models import db, User, People, Favorite_People, Planets, Favorite_Planets, Vehicles, Favorite_Vehicles, Blocked
+from datetime import date, time, datetime, timezone
 #flask librerias jwt
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity , get_jwt
@@ -106,12 +107,33 @@ def user_login():
     token = create_access_token(identity = user.id) #crear token para autenticación
     return jsonify({"token": token})
 
-@app.route('/profile', methods=['POST'])
-@jwt_required() #añadiendo
+@app.route('/profile', methods=['POST'])#cualquier metodo vale
+@jwt_required() #añadiendo proteccion con token
 def user_profile():
     identidad = get_jwt_identity() #almacenando el ID del usuario 
+    jti = get_jwt()['jti']  #revisar status del token
+    foundtoken = Blocked.query.filter_by(blocked_token=jti).first() #haciendo query del token segun el jti
+    if not foundtoken is None:
+        raise APIException("Token inválido, o ya expiró", status_code=400)
     user = User.query.get(identidad) 
     return jsonify({"Usuario" : user.email})
+
+@app.route('/logout', methods=['POST'])#cualquier metodo vale
+@jwt_required()#añadiendo proteccion con token
+def user_logout():
+    jti = get_jwt()['jti']#jason token identifier
+    foundtoken = Blocked.query.filter_by(blocked_token=jti).first() #haciendo query del token segun el jti
+    if not foundtoken is None:
+        raise APIException("Token inválido, o ya expiró", status_code=400)
+    created = datetime.now(timezone.utc) #zona horaria del usuario 
+    print(created)
+    identidad = get_jwt_identity() #almacenando el ID del usuario 
+    user = User.query.get(identidad)
+    email = user.email
+    new_blocked = Blocked(blocked_token=jti, email=email, created=created)
+    db.session.add(new_blocked) 
+    db.session.commit()
+    return jsonify({"Mensaje" : "Sesión cerrada exitosamente!"})
 
 
 
